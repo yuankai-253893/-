@@ -22,16 +22,31 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 public class KnowledgeCategoryService {
+    // 分类树缓存：静态数据读多写少，全量缓存命中率最高
+    private static final String CATEGORY_TREE_KEY = "knowledge:category:tree";  // 分类树缓存键
+    private static final long CATEGORY_TREE_TTL_HOURS = 1;                      // 缓存有效期 1 小时
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    // 注入 Spring Boot 自动配置的 ObjectMapper（Jackson 3，已注册 JavaTimeModule，支持 LocalDateTime 序列化）
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Autowired
     private KnowledgeCategoryMapper knowledgeCategoryMapper;
 
@@ -42,20 +57,47 @@ public class KnowledgeCategoryService {
     private KnowledgeCategoryConvert knowledgeCategoryConvert;
 
     public List<CategoryResponseDTO> getCategoryTree() {
-        // 1. 查询所有启用状态(status = 1)的分类，并按 sort_order 升序排列
+        // 1. 缓存优先：命中直接返回，避免每次全表查询（Cache Aside 读路径）
+        try {
+            String cached = redisTemplate.opsForValue().get(CATEGORY_TREE_KEY);
+            if (StrUtil.isNotBlank(cached)) {
+                log.info("分类树缓存命中");
+                return objectMapper.readValue(cached, new TypeReference<List<CategoryResponseDTO>>() {});
+            }
+        } catch (Exception e) {
+            // 缓存反序列化失败不阻塞主流程，回退查库
+            log.warn("分类树缓存读取失败，回退数据库查询", e);
+        }
+
+        // 2. 缓存未命中 → 查库并挂树
+        List<CategoryResponseDTO> tree = buildCategoryTreeFromDb();
+
+        // 3. 回填缓存（TTL 兜底）
+        try {
+            redisTemplate.opsForValue().set(CATEGORY_TREE_KEY, objectMapper.writeValueAsString(tree),
+                    CATEGORY_TREE_TTL_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("分类树缓存写入失败", e);
+        }
+        return tree;
+    }
+
+    // 从数据库构建分类树
+    private List<CategoryResponseDTO> buildCategoryTreeFromDb() {
+        // 查询所有启用状态(status = 1)的分类，并按 sort_order 升序排列
         LambdaQueryWrapper<KnowledgeCategory> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(KnowledgeCategory::getStatus, 1)
                 .orderByAsc(KnowledgeCategory::getSortOrder);
         List<KnowledgeCategory> categories = knowledgeCategoryMapper.selectList(queryWrapper);
 
-        // 2. 把所有分类转成 DTO，并放进 Map（key=分类id），方便后面按 id 找父分类
+        // 把所有分类转成 DTO，并放进 Map（key=分类id），方便后面按 id 找父分类
         Map<Long, CategoryResponseDTO> dtoMap = new HashMap<>();
         for (KnowledgeCategory category : categories) {
             CategoryResponseDTO dto = knowledgeCategoryConvert.knowledgeCategoryToDTO(category);
             dtoMap.put(dto.getId(), dto);
         }
 
-        // 3. 遍历所有 DTO，挂到父分类的 children 下；parent_id=0 的作为顶级分类
+        // 遍历所有 DTO，挂到父分类的 children 下；parent_id=0 的作为顶级分类
         List<CategoryResponseDTO> tree = new ArrayList<>();
         for (CategoryResponseDTO dto : dtoMap.values()) {
             // 找到父分类
@@ -73,6 +115,12 @@ public class KnowledgeCategoryService {
         }
 
         return tree;
+    }
+
+    // 主动失效：分类发生增删改后调用，删除缓存让下次查询重建（Cache Aside 写路径）
+    public void clearCategoryTreeCache() {
+        redisTemplate.delete(CATEGORY_TREE_KEY);
+        log.info("分类树缓存已清除");
     }
 
     // 管理员端分页查询文章
