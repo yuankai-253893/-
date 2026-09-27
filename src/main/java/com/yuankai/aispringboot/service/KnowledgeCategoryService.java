@@ -16,7 +16,6 @@ import com.yuankai.aispringboot.enumclass.UserType;
 import com.yuankai.aispringboot.entity.KnowledgeCategory;
 import com.yuankai.aispringboot.exception.BusinessException;
 import com.yuankai.aispringboot.mapper.KnowledgeCategoryMapper;
-import com.yuankai.aispringboot.mapper.UserMapper;
 import com.yuankai.aispringboot.mapper.KnowledgeArticleMapper;
 import com.yuankai.aispringboot.service.convert.KnowledgeCategoryConvert;
 import lombok.extern.slf4j.Slf4j;
@@ -113,8 +112,8 @@ public class KnowledgeCategoryService {
         Page<KnowledgeArticle> page = new Page<>(queryDTO.getCurrentPage(), queryDTO.getSize());
         LambdaQueryWrapper<KnowledgeArticle> queryWrapper = new LambdaQueryWrapper<>();
 
-        // 查询所有文章，按阅读次数降序排列
-        queryWrapper.orderByDesc(KnowledgeArticle::getReadCount);
+        // 查询已发布文章（status=1），按阅读次数降序排列
+        queryWrapper.eq(KnowledgeArticle::getStatus, 1).orderByDesc(KnowledgeArticle::getReadCount);
         Page<KnowledgeArticle> articlePage = knowledgeArticleMapper.selectPage(page, queryWrapper);
         Page<ArticleSimpleResponseDTO> responsePage = new Page<>(articlePage.getCurrent(), articlePage.getSize(), articlePage.getTotal());
         responsePage.setRecords(articlePage.getRecords().stream().map(knowledgeCategoryConvert::convertToSimpleResponseDTO).toList());
@@ -157,7 +156,7 @@ public class KnowledgeCategoryService {
         }
 
         // 未发布(status=0)的文章仅管理员可查看；普通用户即使知道id也不能看，防止越权
-        if (knowledgeArticle.getStatus() == 0 && !UserType.ADMIN.getCode().equals(roleType)) {
+        if (Integer.valueOf(0).equals(knowledgeArticle.getStatus()) && !UserType.ADMIN.getCode().equals(roleType)) {
             throw new BusinessException("该文章不存在或未发布");
         }
 

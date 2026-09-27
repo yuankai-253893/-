@@ -44,5 +44,5 @@ jwt:
 
 file:
   # 注意：Windows 系统路径用正斜杠 / 或者双反斜杠 \\ 都可以
-  upload-path: D:/心理健康助手(vue)/ai-springboot/upload/files/bussiness/
+  upload-path: ${FILE_UPLOAD_PATH}
 

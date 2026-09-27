@@ -1,6 +1,5 @@
 package com.yuankai.aispringboot.util;
 
-import ch.qos.logback.core.util.StringUtil;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -17,7 +16,6 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.Date;
-import java.util.SimpleTimeZone;
 
 @Component
 public class JwtTokenUtil implements ApplicationContextAware {
