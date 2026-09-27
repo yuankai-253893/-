@@ -2,6 +2,7 @@ package com.yuankai.aispringboot.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.yuankai.aispringboot.entity.EmotionDiary;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
@@ -10,6 +11,25 @@ import java.util.Map;
 
 @Mapper
 public interface EmotionDiaryMapper extends BaseMapper<EmotionDiary> {
+    @Insert("""
+            INSERT INTO emotion_diary (user_id, diary_date, mood_score, dominant_emotion,
+                                       emotion_triggers, diary_content, sleep_quality, stress_level,
+                                       created_at, updated_at)
+            VALUES (#{userId}, #{diaryDate}, #{moodScore}, #{dominantEmotion},
+                    #{emotionTriggers}, #{diaryContent}, #{sleepQuality}, #{stressLevel},
+                    NOW(), NOW())
+            AS new
+            ON DUPLICATE KEY UPDATE
+                mood_score       = new.mood_score,
+                dominant_emotion = new.dominant_emotion,
+                emotion_triggers = new.emotion_triggers,
+                diary_content    = new.diary_content,
+                sleep_quality    = new.sleep_quality,
+                stress_level     = new.stress_level,
+                updated_at       = NOW()
+            """)
+    int upsertEmotionDiary(EmotionDiary diary);
+
     @Select("""
         SELECT diary_date      AS diaryDate,
                AVG(mood_score) AS avgMoodScore,

@@ -52,6 +52,7 @@ public class PsychologicalChatController {
     @PostMapping(value = "/stream", produces = "text/event-stream")
     public Flux<ServerSentEvent<String>> streamChat(@Valid @RequestBody ConsultationStreamDTO streamDTO) {
         Long userId = GetUserInfo.getUserId();
+        Integer roleType = GetUserInfo.getUserType();
 
         if (userId == null) {
             return Flux.just(ServerSentEvent.<String>builder()
@@ -59,6 +60,19 @@ public class PsychologicalChatController {
                     .data(JSONUtil.toJsonStr(Result.error(ResultCode.UNAUTHORIZED.getCode(), ResultCode.UNAUTHORIZED.getMsg(),"用户未登录")))
                     .build());
         }
+
+        // 普通用户：校验会话归属，防止往他人会话写入消息 / 借用他人会话上下文（水平越权）
+        if (UserType.USER.getCode().equals(roleType)) {
+            Long dbSessionId = PsychologicalSupportService.extractSessionId(streamDTO.getSessionId());
+            ConsultationSession session = consultationSessionService.getConsultationSessionBySessionId(dbSessionId);
+            if (session == null || !userId.equals(session.getUserId())) {
+                return Flux.just(ServerSentEvent.<String>builder()
+                        .event("error")
+                        .data(JSONUtil.toJsonStr(Result.error(ResultCode.ACCESS_UNAUTHORIZED.getCode(), ResultCode.ACCESS_UNAUTHORIZED.getMsg(),"无权访问该会话")))
+                        .build());
+            }
+        }
+        // 管理员：不校验归属，可向任意会话对话
 
         // 开始流式对话
         return psychologicalSupportService.streamPsychologicalChat(streamDTO.getSessionId(), streamDTO.getUserMessage())

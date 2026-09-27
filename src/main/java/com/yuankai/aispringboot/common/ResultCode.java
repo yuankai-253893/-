@@ -19,7 +19,6 @@ public enum ResultCode {
     FILE_TYPE_NOT_SUPPORTED("5005", "不支持的文件类型"),
     FILE_NAME_INVALID("5006", "文件名不合法"),
     FILE_CONTENT_INVALID("5007", "文件内容不合法"),
-    FILE_SAVE_FAILED("5008", "文件保存失败"),
 
     // 业务相关错误
     BUSINESS_ERROR("6000", "业务处理失败"),

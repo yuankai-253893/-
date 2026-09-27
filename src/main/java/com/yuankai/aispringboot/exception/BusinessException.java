@@ -4,6 +4,7 @@ package com.yuankai.aispringboot.exception;
  * 业务异常类
  * @author system
  */
+import com.yuankai.aispringboot.common.ResultCode;
 import lombok.Getter;
 
 @Getter
@@ -15,7 +16,7 @@ public class BusinessException extends RuntimeException {
 
     public BusinessException(String message) {
         super(message);
-        this.code = "BUSINESS_ERROR";
+        this.code = ResultCode.BUSINESS_ERROR.getCode();
         this.message = message;
         this.data = null;
     }

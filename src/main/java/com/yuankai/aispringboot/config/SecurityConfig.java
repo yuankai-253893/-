@@ -23,7 +23,7 @@ public class SecurityConfig {
             "/",
             "/api/user/login",
             "/api/user/add",
-
+            "/files/**",
     };
 
     public static Boolean isPublicPath(String requestUrl) {

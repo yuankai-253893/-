@@ -2,7 +2,6 @@ package com.yuankai.aispringboot.service;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuankai.aispringboot.DTO.command.EmotionDiaryCreateDTO;
 import com.yuankai.aispringboot.DTO.query.EmotionDiaryQueryDTO;
@@ -11,12 +10,12 @@ import com.yuankai.aispringboot.common.ResultCode;
 import com.yuankai.aispringboot.entity.EmotionDiary;
 import com.yuankai.aispringboot.exception.BusinessException;
 import com.yuankai.aispringboot.mapper.EmotionDiaryMapper;
-import com.yuankai.aispringboot.mapper.UserMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
+
+import java.time.LocalDate;
 
 @Slf4j
 @Service
@@ -24,47 +23,30 @@ public class EmotionDiaryService {
     @Autowired
     private EmotionDiaryMapper emotionDiaryMapper;
 
-    @Autowired
-    private UserMapper userMapper;
-
     public EmotionDiaryResponseDTO createOrUpdateEmotionDiary(Long userId, EmotionDiaryCreateDTO dto) {
-        // 根据 userId + diaryDate 查询是否存在（表上有 user_date_unique 唯一索引，每天每用户只有一条）
+        if (dto.getDiaryDate().isAfter(LocalDate.now())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "日记日期不能晚于今天");
+        }
+
+        // 命中 user_date_unique(user_id, diary_date) 唯一索引冲突时 MySQL 自动转 UPDATE，
+        EmotionDiary diary = EmotionDiary.builder()
+                .userId(userId)
+                .diaryDate(dto.getDiaryDate())
+                .moodScore(dto.getMoodScore())
+                .dominantEmotion(dto.getDominantEmotion())
+                .emotionTriggers(dto.getEmotionTriggers())
+                .diaryContent(dto.getDiaryContent())
+                .sleepQuality(dto.getSleepQuality())
+                .stressLevel(dto.getStressLevel())
+                .build();
+        emotionDiaryMapper.upsertEmotionDiary(diary);
+
+        // 回查最新记录返回（拿到 id、AI 分析字段等）
         LambdaQueryWrapper<EmotionDiary> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(EmotionDiary::getUserId, userId)
                 .eq(EmotionDiary::getDiaryDate, dto.getDiaryDate());
-        EmotionDiary exist = emotionDiaryMapper.selectOne(queryWrapper);
-
-        if (exist == null) {
-            // 插入，创建/更新时间赋值当前时间
-            EmotionDiary diary = EmotionDiary.builder()
-                    .userId(userId)
-                    .diaryDate(dto.getDiaryDate())
-                    .moodScore(dto.getMoodScore())
-                    .dominantEmotion(dto.getDominantEmotion())
-                    .emotionTriggers(dto.getEmotionTriggers())
-                    .diaryContent(dto.getDiaryContent())
-                    .sleepQuality(dto.getSleepQuality())
-                    .stressLevel(dto.getStressLevel())
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-            emotionDiaryMapper.insert(diary);
-            return convertToResponseDTO(diary);
-        }
-
-        // 更新，注意updated_at
-        LambdaUpdateWrapper<EmotionDiary> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(EmotionDiary::getId, exist.getId())
-                .set(EmotionDiary::getMoodScore, dto.getMoodScore())
-                .set(EmotionDiary::getDominantEmotion, dto.getDominantEmotion())
-                .set(EmotionDiary::getEmotionTriggers, dto.getEmotionTriggers())
-                .set(EmotionDiary::getDiaryContent, dto.getDiaryContent())
-                .set(EmotionDiary::getSleepQuality, dto.getSleepQuality())
-                .set(EmotionDiary::getStressLevel, dto.getStressLevel())
-                .set(EmotionDiary::getUpdatedAt, LocalDateTime.now());
-        emotionDiaryMapper.update(null, updateWrapper);
-        EmotionDiary updated = emotionDiaryMapper.selectById(exist.getId());
-        return convertToResponseDTO(updated);
+        EmotionDiary saved = emotionDiaryMapper.selectOne(queryWrapper);
+        return convertToResponseDTO(saved);
     }
 
     public Page<EmotionDiaryResponseDTO> getEmotionDiaryByPage(EmotionDiaryQueryDTO queryDTO) {

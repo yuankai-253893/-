@@ -44,11 +44,15 @@ public class UserService {
         log.debug("查询用户: {}", user);
         // 判断用户是否存在
         if (user == null) {
-            throw new BusinessException("用户不存在");
+            throw new BusinessException(ResultCode.USER_NOT_EXIST.getCode(), ResultCode.USER_NOT_EXIST.getMsg());
         }
 
         // 验证密码
         String inputPassword = commandDTO.getPassword().trim();
+        // 防御：库中密码若非BCrypt格式（脏数据/手动改库），matches会抛异常导致500，统一按密码错误处理
+        if (user.getPassword() == null || !user.getPassword().startsWith("$2")) {
+            throw new BusinessException("密码错误");
+        }
         if (!PasswordEncoder.matches(inputPassword, user.getPassword())) {
             throw new BusinessException("密码错误");
         }
@@ -69,14 +73,14 @@ public class UserService {
         log.info("用户注册: {}", commandDTO.getUsername());
         // 验证密码是否一致
         if (!commandDTO.getPassword().equals(commandDTO.getConfirmPassword())) {
-            throw new BusinessException("密码不一致");
+            throw new BusinessException("两次输入密码不一致");
         }
 
         // 检查用户名是否存在
         LambdaQueryWrapper<User> usernamequery = new LambdaQueryWrapper<>();
         usernamequery.eq(User::getUsername, commandDTO.getUsername());
         if (userMapper.selectCount(usernamequery) > 0) {
-            throw new BusinessException("用户名已存在");
+            throw new BusinessException(ResultCode.ACCOUNT_SAME.getCode(), ResultCode.ACCOUNT_SAME.getMsg());
         }
 
         // 检查邮箱是否存在
@@ -107,7 +111,7 @@ public class UserService {
         log.info("用户查询: {}", id);
         User user = userMapper.selectById(id);
         if (user == null) {
-            throw new BusinessException("用户不存在");
+            throw new BusinessException(ResultCode.USER_NOT_EXIST.getCode(), ResultCode.USER_NOT_EXIST.getMsg());
         }
         return UserConvert.entityToDetailResponse(user);
     }

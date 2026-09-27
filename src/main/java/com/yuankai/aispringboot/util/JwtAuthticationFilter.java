@@ -54,8 +54,13 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
         String token = JwtTokenUtil.extractTokenFromRequest(request);
 
         if (StringUtils.hasText(token)) {
-            // 2、验证token并获取用户信息
-            JwtTokenUtil.TokenVerificationResult validationResult = JwtTokenUtil.validateToken(token);
+            // 2、验证token并获取用户信息（签名不合法/过期/格式错误都会抛异常，统一按无效token处理）
+            JwtTokenUtil.TokenVerificationResult validationResult;
+            try {
+                validationResult = JwtTokenUtil.validateToken(token);
+            } catch (Exception e) {
+                validationResult = null;
+            }
 
             if (validationResult != null && validationResult.isValid()) {
                 // 3、检查 Token 是否在黑名单中

@@ -41,11 +41,4 @@ public class ConsultationMessageResponseDTO {
     // 消息长度
     private Integer contentLength;
 
-    /**
-     * 计算消息长度
-     */
-    public void calculateContentLength() {
-        this.contentLength = content != null ? content.length() : 0;
-    }
-
 }

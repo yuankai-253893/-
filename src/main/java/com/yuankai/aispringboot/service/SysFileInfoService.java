@@ -5,6 +5,7 @@ import com.yuankai.aispringboot.common.ResultCode;
 import com.yuankai.aispringboot.exception.BusinessException;
 import com.yuankai.aispringboot.entity.SysFileInfo;
 import com.yuankai.aispringboot.mapper.SysFileInfoMapper;
+import com.yuankai.aispringboot.util.ValidateMagicNumber;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,17 +54,28 @@ public class SysFileInfoService {
             ext = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
 
-        // 4. 校验扩展名白名单,生成时间戳文件名
+        // 4. 校验扩展名白名单
         String extLower = ext.replace(".", "").toLowerCase();
         if (!ALLOWED_EXTENSIONS.contains(extLower)) {
-            throw new BusinessException("不支持的文件类型: " + ext + "，仅允许图片/PDF/文档");
+            throw new BusinessException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getMsg() + ": " + ext + "，仅允许图片/PDF/文档");
+        }
+
+        // 4.1 校验文件头魔数（文件内容与扩展名必须一致，防 .exe 改名 .jpg 绕过白名单）
+        try {
+            ValidateMagicNumber.validateMagicNumber(file, extLower);
+        } catch (IOException e) {
+            log.error("读取文件头失败: {}", originalFilename, e);
+            throw new BusinessException(ResultCode.FILE_CONTENT_INVALID.getMsg());
         }
 
         String timestampName = System.currentTimeMillis() + ext;
 
         // 5. 拼接最终的本地物理路径和URL路径
-        String relativePath = realBusinessType + "/" + timestampName; 
-        String localFilePath = baseLocalPath + relativePath;
+        String relativePath = realBusinessType + "/" + timestampName;
+        // baseLocalPath 末尾可能没有分隔符，做归一化，防止拼成 "uploaduser_avatar/..."
+        String baseDir = baseLocalPath.endsWith("/") || baseLocalPath.endsWith("\\")
+                ? baseLocalPath : baseLocalPath + File.separator;
+        String localFilePath = baseDir + relativePath;
         String urlPath = BASE_URL_PATH + relativePath;
 
         // 6. 保存文件到本地
@@ -80,7 +92,7 @@ public class SysFileInfoService {
             file.transferTo(dest);
         } catch (IOException e) {
             log.error("文件保存失败, path={}", localFilePath, e);
-            throw new BusinessException(ResultCode.FILE_SAVE_FAILED.getMsg());
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getMsg());
         }
 
         // 7. 构建实体并保存到数据库

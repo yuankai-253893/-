@@ -63,6 +63,16 @@ public class ConsultationMessageService {
         return lastMessage != null ? convertToResponseDTO(lastMessage) : null;
     }
 
+    // 根据会话ID获取消息列表，按时间升序排列
+    public List<ConsultationMessageResponseDTO> getMessagesBySessionId(Long sessionId) {
+        LambdaQueryWrapper<ConsultationMessage> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ConsultationMessage::getSessionId, sessionId)
+                .orderByAsc(ConsultationMessage::getCreatedAt);
+
+        List<ConsultationMessage> messages = consultationMessageMapper.selectList(queryWrapper);
+        return messages.stream().map(this::convertToResponseDTO).toList();
+    }
+
     private ConsultationMessageResponseDTO convertToResponseDTO(ConsultationMessage message) {
         if (message == null) {
             return null;
@@ -84,18 +94,8 @@ public class ConsultationMessageService {
         responseDTO.setMessageTypeDesc(message.getMessageTypeDesc());
 
         // 计算消息长度
-        responseDTO.calculateContentLength();
+        responseDTO.setContentLength(message.getContent() != null ? message.getContent().length() : 0);
 
         return responseDTO;
-    }
-
-    // 根据会话ID获取消息列表，按时间升序排列
-    public List<ConsultationMessageResponseDTO> getMessagesBySessionId(Long sessionId) {
-        LambdaQueryWrapper<ConsultationMessage> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ConsultationMessage::getSessionId, sessionId)
-                .orderByAsc(ConsultationMessage::getCreatedAt);
-
-        List<ConsultationMessage> messages = consultationMessageMapper.selectList(queryWrapper);
-        return messages.stream().map(this::convertToResponseDTO).toList();
     }
 }

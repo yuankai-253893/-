@@ -123,7 +123,7 @@ public class PsychologicalSupportService {
     }
 
     // 获取参数中的sessionId
-    private Long  extractSessionId(String sessionId) {
+    public static Long extractSessionId(String sessionId) {
         if (sessionId != null && sessionId.startsWith("session_")) {
             String idstr = sessionId.substring("session_".length());
             return Long.parseLong(idstr);

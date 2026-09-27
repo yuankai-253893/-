@@ -215,7 +215,8 @@ public class KnowledgeCategoryService {
             throw new BusinessException("该文章不存在");
         }
 
-        if (Integer.valueOf(0).equals(updateDTO.getStatus()) && Integer.valueOf(1).equals(updateDTO.getStatus())) {
+        if (updateDTO.getStatus() == null
+                || (!Integer.valueOf(0).equals(updateDTO.getStatus()) && !Integer.valueOf(1).equals(updateDTO.getStatus()))) {
             throw new BusinessException("输入状态值错误");
         }
 

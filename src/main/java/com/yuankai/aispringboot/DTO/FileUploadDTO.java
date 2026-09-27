@@ -8,7 +8,6 @@ import org.springframework.web.multipart.MultipartFile;
 @Data
 public class FileUploadDTO {
     // 1. 文件本体（前端传的 multipart/file）
-    // 注意：MultipartFile 不能用 @Max，可以用 @NotNull 校验它是否有文件
     @NotNull(message = "文件不能为空")
     private MultipartFile file;
 
