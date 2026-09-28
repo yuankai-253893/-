@@ -15,8 +15,11 @@ import com.yuankai.aispringboot.util.JwtTokenUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.util.concurrent.TimeUnit;
 
 import static com.yuankai.aispringboot.util.JwtTokenUtil.generateToken;
 
@@ -24,15 +27,30 @@ import static com.yuankai.aispringboot.util.JwtTokenUtil.generateToken;
 public class UserService {
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
+    // 登录防暴力破解：同一账号失败达到阈值后锁定
+    private static final String LOGIN_FAIL_PREFIX = "login:fail:";
+    private static final int MAX_LOGIN_FAIL_TIMES = 5;               // 最大失败次数阈值
+    private static final long LOCK_MINUTES = 15;                     // 锁定时长：15分钟
+
     @Resource
     private UserMapper userMapper;
 
     @Resource
     private RedisTokenBlacklist redisTokenBlacklist;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
     private final BCryptPasswordEncoder PasswordEncoder = new BCryptPasswordEncoder();
 
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO) {
+        // 1. 防暴力破解：先检查该账号失败次数是否已达阈值（Redis 计数）
+        String loginFailKey = LOGIN_FAIL_PREFIX + commandDTO.getUsername();
+        String failCountStr = stringRedisTemplate.opsForValue().get(loginFailKey);
+        if (failCountStr != null && Integer.parseInt(failCountStr) >= MAX_LOGIN_FAIL_TIMES) {
+            throw new BusinessException("登录失败次数过多，请" + LOCK_MINUTES + "分钟后再试");
+        }
+
         // 构建查询条件
         LambdaQueryWrapper<User> userquery = new LambdaQueryWrapper<>();
         userquery.eq(User::getUsername, commandDTO.getUsername())
@@ -51,9 +69,11 @@ public class UserService {
         String inputPassword = commandDTO.getPassword().trim();
         // 防御：库中密码若非BCrypt格式（脏数据/手动改库），matches会抛异常导致500，统一按密码错误处理
         if (user.getPassword() == null || !user.getPassword().startsWith("$2")) {
+            recordLoginFail(loginFailKey);
             throw new BusinessException("密码错误");
         }
         if (!PasswordEncoder.matches(inputPassword, user.getPassword())) {
+            recordLoginFail(loginFailKey);
             throw new BusinessException("密码错误");
         }
 
@@ -62,11 +82,21 @@ public class UserService {
             throw new BusinessException("用户已禁用");
         }
 
+        // 登录成功：清除该账号的失败计数
+        stringRedisTemplate.delete(loginFailKey);
+
         // 生成token
         String token = generateToken(user.getId(), user.getUsername(), user.getUserType());
         log.info("用户 {} 登录成功", user.getUsername());
         UserLoginResponseDTO.UserDetailResponseDTO userInfo = UserConvert.entityToDetailResponse(user);
         return UserConvert.entityToDetailResponse(token, userInfo);
+    }
+
+    // 记录一次登录失败：Redis INCR 原子自增 + 刷新锁定时长（15分钟）
+    private void recordLoginFail(String loginFailKey) {
+        Long count = stringRedisTemplate.opsForValue().increment(loginFailKey);
+        stringRedisTemplate.expire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
+        log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(LOGIN_FAIL_PREFIX, ""), count);
     }
 
     public UserLoginResponseDTO.UserDetailResponseDTO register(UserRegisterCommandDTO commandDTO) {
