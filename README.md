@@ -13,7 +13,7 @@
 | AI | Spring AI 2.0.1（硅基流动 Qwen2.5，流式 SSE 对话） |
 | 鉴权 | java-jwt 4.4.0（自定义 JWT 过滤器 + Redis Token 黑名单登出） |
 | 安全 | BCrypt 密码加密、登录防暴力破解（Redis 计数器）、文件魔数校验 |
-| 数据库 | MySQL 8.0、Redis（Token 黑名单 / 分类树缓存 / 登录限流） |
+| 数据库 | MySQL 8.0、Redis 7.x（Token 黑名单 / 分类树缓存 / 登录限流 / 阅读量计数） |
 | 工具 | Lombok、Hutool、Jakarta Validation |
 | 部署 | Docker、Docker Compose（MySQL + Redis + App 一键编排） |
 | 构建 | Maven、Java 17+ |
@@ -54,7 +54,7 @@
 | `/api/knowledge/article/page` | GET | 文章分页（用户端按阅读量排序，排序字段白名单防注入） |
 | `/api/knowledge/admin/article/page` | GET | 管理端文章分页 |
 | `/api/knowledge/article` | POST | 新增文章（UUID 主键） |
-| `/api/knowledge/article/{id}` | GET | 详情（阅读量 SQL 原子自增） |
+| `/api/knowledge/article/{id}` | GET | 详情（阅读量 Redis INCR 自增 + 定时刷库） |
 | `/api/knowledge/article/{id}` | PUT | 更新 |
 | `/api/knowledge/article/{id}/status` | PUT | 发布/下线 |
 | `/api/knowledge/article/{id}` | DELETE | 删除 |
@@ -100,12 +100,18 @@ src/main/java/com/yuankai/aispringboot
 
 ## 快速启动
 
-**环境要求**：JDK 17+、MySQL 8、Redis（可选，不装也能跑，仅登出黑名单/登录限流/分类树缓存用 Redis）。
+**环境要求**：JDK 17+、MySQL 8、Redis 6.2+ 。
 
 ### 方式一：本地启动
 
 1. 导入数据库：`mysql -u root -p < mental_health_assistant.sql`
-2. 配置环境变量：
+2. 启动 Redis：
+
+   ```powershell
+   docker run -d --name redis7 --restart unless-stopped -p 6379:6379 -v redis7-data:/data redis:7 redis-server --appendonly yes
+   ```
+
+3. 配置环境变量：
 
    ```powershell
    $env:MYSQL_PASSWORD='你的MySQL密码'
@@ -139,7 +145,7 @@ src/main/java/com/yuankai/aispringboot
 - **登录防暴力破解**：Redis 计数器记录失败次数，同一账号 5 次失败锁定 15 分钟（INCR 原子自增 + TTL 自动过期），登录成功清除计数
 - **Redis 缓存**：分类树 Cache Aside 缓存（TTL 1h + 主动失效），缓存失败降级回查库
 - **防注入**：排序字段白名单映射，用户输入不直接拼 SQL
-- **并发安全**：文章阅读量用 SQL 原子自增 `read_count = read_count + 1`，避免读改写丢失更新
+- **并发安全**：文章阅读量走 Redis INCR 原子自增（内存扛高并发）+ 定时任务刷回 MySQL（GETDEL 原子取增量防丢失），Redis 故障自动降级 SQL 原子自增
 - **文件上传安全**：扩展名白名单（拒绝 .exe/.jsp/.html）+ 文件头魔数校验（防伪装）+ 服务端重命名防路径穿越 + 大小限制
 - **统一异常处理**：`BusinessException` + 全局处理器，参数校验/业务异常/系统异常分级返回
 - **聚合统计**：今日活跃用 `UNION` 去重业务行为近似（user 表无最后登录时间字段的口径设计）

@@ -12,10 +12,10 @@ import com.yuankai.aispringboot.exception.BusinessException;
 import com.yuankai.aispringboot.mapper.UserMapper;
 import com.yuankai.aispringboot.service.convert.UserConvert;
 import com.yuankai.aispringboot.util.JwtTokenUtil;
+import com.yuankai.aispringboot.util.RedisCounterUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -39,14 +39,14 @@ public class UserService {
     private RedisTokenBlacklist redisTokenBlacklist;
 
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private RedisCounterUtil redisCounterUtil;
 
     private final BCryptPasswordEncoder PasswordEncoder = new BCryptPasswordEncoder();
 
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO) {
         // 1. 防暴力破解：先检查该账号失败次数是否已达阈值（Redis 计数）
-        String loginFailKey = LOGIN_FAIL_PREFIX + commandDTO.getUsername();
-        String failCountStr = stringRedisTemplate.opsForValue().get(loginFailKey);
+        String loginFailKey = LOGIN_FAIL_PREFIX + commandDTO.getUsername();     // 键 login:fail:用户名
+        String failCountStr = redisCounterUtil.get(loginFailKey);               // 获取失败次数
         if (failCountStr != null && Integer.parseInt(failCountStr) >= MAX_LOGIN_FAIL_TIMES) {
             throw new BusinessException("登录失败次数过多，请" + LOCK_MINUTES + "分钟后再试");
         }
@@ -83,7 +83,7 @@ public class UserService {
         }
 
         // 登录成功：清除该账号的失败计数
-        stringRedisTemplate.delete(loginFailKey);
+        redisCounterUtil.delete(loginFailKey);
 
         // 生成token
         String token = generateToken(user.getId(), user.getUsername(), user.getUserType());
@@ -94,8 +94,7 @@ public class UserService {
 
     // 记录一次登录失败：Redis INCR 原子自增 + 刷新锁定时长（15分钟）
     private void recordLoginFail(String loginFailKey) {
-        Long count = stringRedisTemplate.opsForValue().increment(loginFailKey);
-        stringRedisTemplate.expire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
+        Long count = redisCounterUtil.incrementWithExpire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
         log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(LOGIN_FAIL_PREFIX, ""), count);
     }
 

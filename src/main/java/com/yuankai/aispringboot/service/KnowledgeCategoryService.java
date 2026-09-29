@@ -18,6 +18,7 @@ import com.yuankai.aispringboot.exception.BusinessException;
 import com.yuankai.aispringboot.mapper.KnowledgeCategoryMapper;
 import com.yuankai.aispringboot.mapper.KnowledgeArticleMapper;
 import com.yuankai.aispringboot.service.convert.KnowledgeCategoryConvert;
+import com.yuankai.aispringboot.util.RedisCounterUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -40,8 +42,14 @@ public class KnowledgeCategoryService {
     private static final String CATEGORY_TREE_KEY = "knowledge:category:tree";  // 分类树缓存键
     private static final long CATEGORY_TREE_TTL_HOURS = 1;                      // 缓存有效期 1 小时
 
+    // 文章阅读量：Redis 存增量（INCR 原子自增），MySQL 存基线值，定时任务把增量刷回库
+    private static final String ARTICLE_READ_KEY_PREFIX = "article:read:";      // 阅读量增量缓存键前缀
+
     @Autowired
     private StringRedisTemplate redisTemplate;
+
+    @Autowired
+    private RedisCounterUtil redisCounterUtil;
 
     // 注入 Spring Boot 自动配置的 ObjectMapper（Jackson 3，已注册 JavaTimeModule，支持 LocalDateTime 序列化）
     @Autowired
@@ -117,11 +125,11 @@ public class KnowledgeCategoryService {
         return tree;
     }
 
-    // 主动失效：分类发生增删改后调用，删除缓存让下次查询重建（Cache Aside 写路径）
-    public void clearCategoryTreeCache() {
-        redisTemplate.delete(CATEGORY_TREE_KEY);
-        log.info("分类树缓存已清除");
-    }
+//    // 主动失效：分类发生增删改后调用，删除缓存让下次查询重建（Cache Aside 写路径）
+//    public void clearCategoryTreeCache() {
+//        redisTemplate.delete(CATEGORY_TREE_KEY);
+//        log.info("分类树缓存已清除");
+//    }
 
     // 管理员端分页查询文章
     public Page<ArticleSimpleResponseDTO> getArticleByPage(ArticleListQueryDTO queryDTO) {
@@ -150,6 +158,8 @@ public class KnowledgeCategoryService {
         queryWrapper.orderByDesc(KnowledgeArticle::getPublishAt);
         Page<KnowledgeArticle> articlePage = knowledgeArticleMapper.selectPage(page, queryWrapper);
 
+        // 合成阅读量：DB 基线 + Redis 增量（增量未刷库时列表展示也准确）
+        articlePage.getRecords().forEach(a -> a.setReadCount(getDisplayReadCount(a)));
         Page<ArticleSimpleResponseDTO> responsePage = new Page<>(articlePage.getCurrent(), articlePage.getSize(), articlePage.getTotal());
         responsePage.setRecords(articlePage.getRecords().stream().map(knowledgeCategoryConvert::convertToSimpleResponseDTO).toList());
         return responsePage;
@@ -160,9 +170,12 @@ public class KnowledgeCategoryService {
         Page<KnowledgeArticle> page = new Page<>(queryDTO.getCurrentPage(), queryDTO.getSize());
         LambdaQueryWrapper<KnowledgeArticle> queryWrapper = new LambdaQueryWrapper<>();
 
-        // 查询已发布文章（status=1），按阅读次数降序排列
+        // 查询已发布文章（status=1），按阅读次数降序排列（DB 基线排序，增量未刷库时排序略有滞后，属最终一致可接受）
         queryWrapper.eq(KnowledgeArticle::getStatus, 1).orderByDesc(KnowledgeArticle::getReadCount);
         Page<KnowledgeArticle> articlePage = knowledgeArticleMapper.selectPage(page, queryWrapper);
+
+        // 合成阅读量：DB 基线 + Redis 增量
+        articlePage.getRecords().forEach(a -> a.setReadCount(getDisplayReadCount(a)));
         Page<ArticleSimpleResponseDTO> responsePage = new Page<>(articlePage.getCurrent(), articlePage.getSize(), articlePage.getTotal());
         responsePage.setRecords(articlePage.getRecords().stream().map(knowledgeCategoryConvert::convertToSimpleResponseDTO).toList());
         return responsePage;
@@ -208,15 +221,63 @@ public class KnowledgeCategoryService {
             throw new BusinessException("该文章不存在或未发布");
         }
 
-        // 阅读量+1：用SQL原子自增，避免并发时丢失更新；COALESCE 处理 read_count 为 NULL 的情况
-        LambdaUpdateWrapper<KnowledgeArticle> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(KnowledgeArticle::getId, id)
-                .setSql("read_count = COALESCE(read_count, 0) + 1");
-        knowledgeArticleMapper.update(null, updateWrapper);
+        // 阅读量+1：优先 Redis INCR 原子自增（内存操作，扛高并发）；Redis 不可用时降级为 SQL 原子自增
+        try {
+            redisCounterUtil.increment(ARTICLE_READ_KEY_PREFIX + id);
+        } catch (Exception e) {
+            log.warn("Redis 阅读量自增失败，降级为 SQL 原子自增", e);
+            LambdaUpdateWrapper<KnowledgeArticle> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(KnowledgeArticle::getId, id)
+                    .setSql("read_count = COALESCE(read_count, 0) + 1");
+            knowledgeArticleMapper.update(null, updateWrapper);
+        }
 
-        // 重新查询获取最新数据（包含自增后的阅读量）
-        knowledgeArticle = knowledgeArticleMapper.selectById(id);
+        // 展示阅读量 = 数据库基线值 + Redis 增量
+        knowledgeArticle.setReadCount(getDisplayReadCount(knowledgeArticle));
         return knowledgeCategoryConvert.convertToResponseDTO(knowledgeArticle);
+    }
+
+    // 合成阅读量：数据库基线值 + Redis 中未刷库的增量（Redis 异常时回退基线值）
+    private Integer getDisplayReadCount(KnowledgeArticle article) {
+        int base = article.getReadCount() == null ? 0 : article.getReadCount();
+        try {
+            String incr = redisCounterUtil.get(ARTICLE_READ_KEY_PREFIX + article.getId());
+            if (StrUtil.isNotBlank(incr)) {
+                return base + Integer.parseInt(incr);
+            }
+        } catch (Exception e) {
+            log.warn("读取阅读量增量失败，使用数据库基线值", e);
+        }
+        return base;
+    }
+
+    // 定时任务调用：把 Redis 中的阅读量增量刷回 MySQL（GETDEL 原子取增量并清零，刷完即删）
+    public void syncArticleReadCounts() {
+        Set<String> keys = redisCounterUtil.keys(ARTICLE_READ_KEY_PREFIX + "*");
+        if (keys == null || keys.isEmpty()) {
+            return;
+        }
+        for (String key : keys) {
+            try {
+                // GETDEL 原子取出增量并删除：刷回期间新产生的点击留在新 key 里，不会被误删
+                String val = redisCounterUtil.getAndDelete(key);
+                if (StrUtil.isBlank(val)) {
+                    continue;
+                }
+                int incr = Integer.parseInt(val);
+                if (incr <= 0) {
+                    continue;
+                }
+                String articleId = key.substring(ARTICLE_READ_KEY_PREFIX.length());
+                LambdaUpdateWrapper<KnowledgeArticle> updateWrapper = new LambdaUpdateWrapper<>();
+                updateWrapper.eq(KnowledgeArticle::getId, articleId)
+                        .setSql("read_count = COALESCE(read_count, 0) + " + incr);
+                knowledgeArticleMapper.update(null, updateWrapper);
+                log.info("阅读量刷库完成：文章 {} 增量 {}", articleId, incr);
+            } catch (Exception e) {
+                log.warn("阅读量刷库失败，key={}", key, e);
+            }
+        }
     }
 
     // 更新知识文章
