@@ -4,6 +4,7 @@ package com.yuankai.aispringboot.AiService;
 import com.yuankai.aispringboot.DTO.command.ConsultationSessionCreateDTO;
 import com.yuankai.aispringboot.DTO.response.ConsultationMessageResponseDTO;
 import com.yuankai.aispringboot.entity.ConsultationSession;
+import com.yuankai.aispringboot.service.ActiveUserRecordService;
 import com.yuankai.aispringboot.service.ConsultationMessageService;
 import com.yuankai.aispringboot.service.ConsultationSessionService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -36,9 +37,15 @@ public class PsychologicalSupportService {
     @Qualifier("open-ai")
     private ChatClient chatClient;
 
+    @Autowired
+    private ActiveUserRecordService activeUserRecordService;
+
     public StructOutPut.StreamChatSession startSession(Long userId, ConsultationSessionCreateDTO createDTO) {
         // 创建数据库的会话记录，向数据库插入一条会话记录
         ConsultationSession ConsultationSession = consultationSessionService.createSession(userId, createDTO);
+
+        // 活跃埋点：开启咨询会话视为一次今日活跃（Redis HyperLogLog 去重计数）
+        activeUserRecordService.record(userId);
 
         // 将初始用户消息保存到message表
         consultationMessageService.saveUserMessage(ConsultationSession.getId(), createDTO.getInitialMessage(), null);

@@ -23,6 +23,9 @@ public class EmotionDiaryService {
     @Autowired
     private EmotionDiaryMapper emotionDiaryMapper;
 
+    @Autowired
+    private ActiveUserRecordService activeUserRecordService;
+
     public EmotionDiaryResponseDTO createOrUpdateEmotionDiary(Long userId, EmotionDiaryCreateDTO dto) {
         if (dto.getDiaryDate().isAfter(LocalDate.now())) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "日记日期不能晚于今天");
@@ -40,6 +43,9 @@ public class EmotionDiaryService {
                 .stressLevel(dto.getStressLevel())
                 .build();
         emotionDiaryMapper.upsertEmotionDiary(diary);
+
+        // 活跃埋点：写/更新情绪日记视为一次今日活跃（Redis HyperLogLog 去重计数）
+        activeUserRecordService.record(userId);
 
         // 回查最新记录返回（拿到 id、AI 分析字段等）
         LambdaQueryWrapper<EmotionDiary> queryWrapper = new LambdaQueryWrapper<>();

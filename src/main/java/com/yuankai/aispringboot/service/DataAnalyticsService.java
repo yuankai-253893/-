@@ -31,6 +31,9 @@ public class DataAnalyticsService {
     @Autowired
     private ConsultationMessageMapper consultationMessageMapper;
 
+    @Autowired
+    private ActiveUserRecordService activeUserRecordService;
+
     public DataAnalyticsResponseDTO getDataAnalytics() {
         // 各表总数
         Long userTotal = userMapper.selectCount(null);
@@ -44,8 +47,8 @@ public class DataAnalyticsService {
         Map<String, Object> avgResult = emotionDiaryMapper.selectMaps(avgWrapper).get(0);
         Double avgMoodScore = toDouble(avgResult.get("averageMoodScore"));
 
-        // 今日活跃用户
-        Long todayActive = emotionDiaryMapper.selectTodayActiveUsers();
+        // 今日活跃用户（Redis HyperLogLog 去重计数，Redis 故障自动回退 SQL）
+        Long todayActive = activeUserRecordService.countToday();
 
         // 近 7 日情绪趋势：Map -> EmotionTrend 列表
         List<Map<String, Object>> stats = emotionDiaryMapper.selectLast7DaysMoodStats();

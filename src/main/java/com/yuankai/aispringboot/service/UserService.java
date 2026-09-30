@@ -41,12 +41,21 @@ public class UserService {
     @Resource
     private RedisCounterUtil redisCounterUtil;
 
+    @Resource
+    private ActiveUserRecordService activeUserRecordService;
+
     private final BCryptPasswordEncoder PasswordEncoder = new BCryptPasswordEncoder();
 
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO) {
         // 1. 防暴力破解：先检查该账号失败次数是否已达阈值（Redis 计数）
+        //    fail-open：Redis 不可用时查询抛异常 → 视为 0 次失败，跳过限流检查，保证登录不因 Redis 故障而中断
         String loginFailKey = LOGIN_FAIL_PREFIX + commandDTO.getUsername();     // 键 login:fail:用户名
-        String failCountStr = redisCounterUtil.get(loginFailKey);               // 获取失败次数
+        String failCountStr = null;
+        try {
+            failCountStr = redisCounterUtil.get(loginFailKey);                 // 获取失败次数
+        } catch (Exception e) {
+            log.warn("登录限流查询失败（Redis 不可用？），fail-open 跳过限流检查", e);
+        }
         if (failCountStr != null && Integer.parseInt(failCountStr) >= MAX_LOGIN_FAIL_TIMES) {
             throw new BusinessException("登录失败次数过多，请" + LOCK_MINUTES + "分钟后再试");
         }
@@ -82,8 +91,15 @@ public class UserService {
             throw new BusinessException("用户已禁用");
         }
 
-        // 登录成功：清除该账号的失败计数
-        redisCounterUtil.delete(loginFailKey);
+        // 登录成功：清除该账号的失败计数（fail-open：Redis 不可用时忽略，不影响登录成功返回）
+        try {
+            redisCounterUtil.delete(loginFailKey);
+        } catch (Exception e) {
+            log.warn("清除登录失败计数失败（Redis 不可用？），fail-open 继续", e);
+        }
+
+        // 活跃埋点：登录成功视为一次今日活跃（Redis HyperLogLog 去重计数）
+        activeUserRecordService.record(user.getId());
 
         // 生成token
         String token = generateToken(user.getId(), user.getUsername(), user.getUserType());
@@ -93,9 +109,14 @@ public class UserService {
     }
 
     // 记录一次登录失败：Redis INCR 原子自增 + 刷新锁定时长（15分钟）
+    // fail-open：Redis 不可用时只记录 WARN，不阻断"密码错误"这一正常业务返回
     private void recordLoginFail(String loginFailKey) {
-        Long count = redisCounterUtil.incrementWithExpire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
-        log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(LOGIN_FAIL_PREFIX, ""), count);
+        try {
+            Long count = redisCounterUtil.incrementWithExpire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
+            log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(LOGIN_FAIL_PREFIX, ""), count);
+        } catch (Exception e) {
+            log.warn("记录登录失败次数失败（Redis 不可用？），fail-open 继续返回密码错误", e);
+        }
     }
 
     public UserLoginResponseDTO.UserDetailResponseDTO register(UserRegisterCommandDTO commandDTO) {

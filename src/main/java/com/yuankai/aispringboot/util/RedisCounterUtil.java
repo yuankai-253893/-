@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Redis 计数与原子操作公共工具类。
- * 抽取自登录限流（UserService）与文章阅读量（KnowledgeCategoryService）中重复的 INCR/GET/DELETE 逻辑，
+ * 登录限流（UserService）与文章阅读量（KnowledgeCategoryService），
  * 依赖：StringRedisTemplate（Spring Boot 自动配置，值序列化器为 String，读写都是字符串）。
  */
 @Component
@@ -63,5 +63,30 @@ public class RedisCounterUtil {
      */
     public String getAndDelete(String key) {
         return stringRedisTemplate.opsForValue().getAndDelete(key);
+    }
+
+    /**
+     * 设置 key 的过期时间（幂等，可重复调用刷新 TTL）。
+     * 登录限流的 incrementWithExpire、活跃埋点的 expire 都依赖它。
+     */
+    public Boolean expire(String key, long timeout, TimeUnit unit) {
+        return stringRedisTemplate.expire(key, timeout, unit);
+    }
+
+    /**
+     * HyperLogLog 添加元素（PFADD）。
+     * 用于今日活跃用户去重计数：内存固定 12KB 左右，可统计 2^64 个元素，误差约 0.81%。
+     * 返回值 1 表示基数可能发生了变化，0 表示元素已存在（本方法返回值仅作参考，业务一般用 pfCount）。
+     */
+    public Long pfAdd(String key, String... values) {
+        return stringRedisTemplate.opsForHyperLogLog().add(key, values);
+    }
+
+    /**
+     * HyperLogLog 基数估算（PFCOUNT）。
+     * 返回该 key 下去重后的元素个数估算值；key 不存在返回 0。
+     */
+    public Long pfCount(String key) {
+        return stringRedisTemplate.opsForHyperLogLog().size(key);
     }
 }
