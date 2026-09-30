@@ -1,0 +1,69 @@
+# ============================================
+# 心理健康助手 - 一键编排 MySQL + Redis + 应用
+# 使用：docker compose up -d --build
+# 首次启动会自动导入 mental_health_assistant.sql
+# ============================================
+
+# 显式指定项目名（目录名为中文时，compose 无法自动生成合法项目名）
+name: mentalhealth
+
+services:
+  # 1. MySQL 8 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: mha-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      MYSQL_DATABASE: mental_health_assistant
+      TZ: Asia/Shanghai
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次初始化自动建表（脚本是纯表结构，不含 CREATE DATABASE）
+      - ./mental_health_assistant.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD:-123456}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 2. Redis 缓存（Token 黑名单 + 登录限流）
+  redis:
+    image: redis:7
+    container_name: mha-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+
+  # 3. 应用服务
+  app:
+    build: .
+    container_name: mha-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      # 容器网络内用服务名互连
+      DB_HOST: mysql
+      REDIS_HOST: redis
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      JWT_SECRET: ${JWT_SECRET:?请设置 JWT_SECRET 环境变量}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-sk-placeholder}
+      FILE_UPLOAD_PATH: /app/upload
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+    volumes:
+      - app-upload:/app/upload
+
+volumes:
+  mysql-data:
+  redis-data:
+  app-upload:
