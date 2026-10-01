@@ -11,6 +11,8 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.ObjectMapper;
@@ -38,6 +40,11 @@ import java.util.regex.Pattern;
  */
 @Aspect
 @Component
+// 显式排在 Spring Security 方法安全拦截器之外层：
+// 管理端接口改用 @PreAuthorize 后，鉴权失败会在方法调用前抛 AccessDeniedException。
+// 若本切面被包在拦截器内层，被拒绝的请求根本走不到这里，操作日志会丢失一条审计记录；
+// 排在外层后，未授权的尝试同样会被 catch 并落库，与改造前（判断写在方法体内）行为一致。
+@Order(Ordered.LOWEST_PRECEDENCE - 10)
 public class OperationLogAspect {
     private static final Logger log = LoggerFactory.getLogger(OperationLogAspect.class);
 

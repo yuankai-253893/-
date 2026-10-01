@@ -3,6 +3,8 @@ package com.yuankai.aispringboot.common;
 import com.yuankai.aispringboot.exception.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -59,6 +61,30 @@ public class GlobalExceptionHandler {
             return Result.error(e.getCode(), e.getMessage(), e.getData());
         }
         return Result.error(e.getCode(), e.getMessage(), null);
+    }
+
+    /**
+     * 处理 @PreAuthorize 方法级鉴权拒绝。
+     *
+     * 为什么必须单独处理：@PreAuthorize 是 AOP 方法级拦截，拒绝时抛出的
+     * AuthorizationDeniedException 不会经过 Spring Security 的 ExceptionTranslationFilter
+     * （那个过滤器只兜 URL 级授权），会直接冒到 ControllerAdvice。
+     * 若不加本处理器，会被下方 @ExceptionHandler(Exception.class) 兜底成"系统错误 500"，
+     * 前端会把权限不足误判为服务器故障。
+     *
+     * 统一返回 ACCESS_UNAUTHORIZED（A0301 访问未授权），与改造前手写判断的返回体一致。
+     */
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public Result<?> handlerAuthorizationDenied(AuthorizationDeniedException e) {
+        log.warn("方法级鉴权拒绝: {}", e.getMessage());
+        return Result.error(ResultCode.ACCESS_UNAUTHORIZED.getCode(), ResultCode.ACCESS_UNAUTHORIZED.getMsg(), null);
+    }
+
+    //兼容旧版/其他来源的 AccessDeniedException（如 Spring Security 5 风格或自定义抛出的）
+    @ExceptionHandler(AccessDeniedException.class)
+    public Result<?> handlerAccessDenied(AccessDeniedException e) {
+        log.warn("访问被拒绝: {}", e.getMessage());
+        return Result.error(ResultCode.ACCESS_UNAUTHORIZED.getCode(), ResultCode.ACCESS_UNAUTHORIZED.getMsg(), null);
     }
 
     //处理文件上传大小超限（Spring multipart 在进入 Controller 前抛出）

@@ -3,6 +3,7 @@ package com.yuankai.aispringboot.util;
 import com.yuankai.aispringboot.common.ResultCode;
 import com.yuankai.aispringboot.config.SecurityConfig;
 import com.yuankai.aispringboot.entity.User;
+import com.yuankai.aispringboot.enumclass.UserType;
 import com.yuankai.aispringboot.mapper.UserMapper;
 import com.yuankai.aispringboot.service.RedisTokenBlacklist;
 import jakarta.annotation.Resource;
@@ -88,8 +89,11 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
                 log.debug("JWT验证通过, 用户: {}", validationResult.getUsername());
 
                 // 5、创建Spring Security认证对象（用户信息已校验，直接使用token携带的角色）
+                // 权限标识必须用枚举名（ROLE_ADMIN / ROLE_USER）而不是数字 code：
+                // @PreAuthorize("hasRole('ADMIN')") 匹配的是字符串 ROLE_ADMIN，
+                String roleName = resolveRoleName(validationResult.getRoleType());
                 List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                        new SimpleGrantedAuthority("ROLE_" + validationResult.getRoleType())
+                        new SimpleGrantedAuthority("ROLE_" + roleName)
                 );
 
                 // 创建UsernamePasswordAuthenticationToken对象
@@ -110,6 +114,7 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
             }else {
                 clearSecurityContext();
                 ResponseUtil.writeError(response, ResultCode.TOKEN_INVALID);
+                return;
             }
         }else {
             // 清理上下文
@@ -125,6 +130,18 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
     // 清理Spring Security上下文
     private void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    /**
+     * 把 token 里的角色 code 翻译成 Spring Security 的权限名（ADMIN / USER）。
+     * 遇到非法 code 兜底为 USER：宁可少给权限，也不能让未知 code 拿到管理员身份。
+     */
+    private String resolveRoleName(Integer roleType) {
+        if (UserType.isValidCode(roleType)) {
+            return UserType.fromCode(roleType).name();
+        }
+        log.warn("token 携带未知角色 code={}，按普通用户处理", roleType);
+        return UserType.USER.name();
     }
 
 }

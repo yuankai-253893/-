@@ -6,13 +6,12 @@ import com.yuankai.aispringboot.DTO.query.EmotionDiaryQueryDTO;
 import com.yuankai.aispringboot.DTO.response.EmotionDiaryResponseDTO;
 import com.yuankai.aispringboot.annotation.OperationLog;
 import com.yuankai.aispringboot.common.Result;
-import com.yuankai.aispringboot.common.ResultCode;
-import com.yuankai.aispringboot.enumclass.UserType;
 import com.yuankai.aispringboot.service.EmotionDiaryService;
 import com.yuankai.aispringboot.util.GetUserInfo;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,24 +33,17 @@ public class EmotionDiaryController {
         return Result.success(emotionDiary);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/page")
     public Result<Page<EmotionDiaryResponseDTO>> getEmotionDiaryByPage(@Valid EmotionDiaryQueryDTO queryDTO) {
-        // 仅管理员能够访问操作
-        Integer roleType = GetUserInfo.getUserType();
-        if (!UserType.ADMIN.getCode().equals(roleType))
-            return Result.error(ResultCode.ACCESS_UNAUTHORIZED.getCode(), ResultCode.ACCESS_UNAUTHORIZED.getMsg(), null);
-
         return Result.success(emotionDiaryService.getEmotionDiaryByPage(queryDTO));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @OperationLog("删除情绪日记")
     @DeleteMapping("/admin/{id}")
     public Result<?> deleteEmotionDiary(@Min(value = 1, message = "ID不合法") @PathVariable Long id) {
         Long userId = GetUserInfo.getUserId();
-        Integer roleType = GetUserInfo.getUserType();
-        if (!UserType.ADMIN.getCode().equals(roleType))
-            return Result.error(ResultCode.ACCESS_UNAUTHORIZED.getCode(), ResultCode.ACCESS_UNAUTHORIZED.getMsg(), null);
-
         emotionDiaryService.deleteEmotionDiary(id,userId);
         return Result.success();
     }
