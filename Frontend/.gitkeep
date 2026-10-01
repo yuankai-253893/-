@@ -1,0 +1,8 @@
+# Frontend
+
+前端工程占位目录，开发中。
+
+技术栈规划：Vue 3 + Vite + Pinia + Vue Router + Element Plus + Axios + ECharts。
+
+核心页面：登录注册 / AI 心理咨询（SSE 流式打字机）/ 情绪日记 / 知识库文章 / 管理后台。
+后端接口清单见 `Backend/README.md`。

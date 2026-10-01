@@ -1,0 +1,22 @@
+# 仓库只对外展示 Backend/ 与 Frontend/ 两个工程目录，其余一律忽略
+
+/*
+
+!/Backend/
+!/Frontend/
+!/README.md
+!/LICENSE
+!/.gitignore
+
+# ---------- Backend 内部忽略 ----------
+Backend/target/
+Backend/upload/
+Backend/.idea/
+Backend/.workbuddy/
+Backend/*.log
+Backend/HELP.md
+
+# Redis 持久化快照（二进制，可能含线上数据，禁止入库）
+Backend/dump.rdb
+*.rdb
+*.aof
