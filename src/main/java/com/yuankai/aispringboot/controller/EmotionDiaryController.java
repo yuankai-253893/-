@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuankai.aispringboot.DTO.command.EmotionDiaryCreateDTO;
 import com.yuankai.aispringboot.DTO.query.EmotionDiaryQueryDTO;
 import com.yuankai.aispringboot.DTO.response.EmotionDiaryResponseDTO;
+import com.yuankai.aispringboot.annotation.OperationLog;
 import com.yuankai.aispringboot.common.Result;
 import com.yuankai.aispringboot.common.ResultCode;
 import com.yuankai.aispringboot.enumclass.UserType;
@@ -23,6 +24,7 @@ public class EmotionDiaryController {
     private EmotionDiaryService emotionDiaryService;
 
     // 创建或更新情绪日志
+    @OperationLog("创建/更新情绪日记")
     @PostMapping
     public Result<EmotionDiaryResponseDTO> createOrUpdateEmotionDiary(@Valid @RequestBody  EmotionDiaryCreateDTO createOrUpdateDTO) {
         // 获取当前用户
@@ -42,6 +44,7 @@ public class EmotionDiaryController {
         return Result.success(emotionDiaryService.getEmotionDiaryByPage(queryDTO));
     }
 
+    @OperationLog("删除情绪日记")
     @DeleteMapping("/admin/{id}")
     public Result<?> deleteEmotionDiary(@Min(value = 1, message = "ID不合法") @PathVariable Long id) {
         Long userId = GetUserInfo.getUserId();

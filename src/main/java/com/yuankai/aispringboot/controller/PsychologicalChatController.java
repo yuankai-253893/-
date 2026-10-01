@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuankai.aispringboot.AiService.PsychologicalSupportService;
 import com.yuankai.aispringboot.AiService.StructOutPut;
+import com.yuankai.aispringboot.annotation.OperationLog;
 import com.yuankai.aispringboot.DTO.command.ConsultationSessionCreateDTO;
 import com.yuankai.aispringboot.DTO.command.ConsultationStreamDTO;
 import com.yuankai.aispringboot.DTO.query.ConsultationSessionQueryDTO;
@@ -45,6 +46,7 @@ public class PsychologicalChatController {
     private ConsultationMessageService consultationMessageService;
 
     // 开始会话
+    @OperationLog("开启咨询会话")
     @PostMapping("/session/start")
     public Result<StructOutPut.StreamChatSession> startSession(@Valid @RequestBody ConsultationSessionCreateDTO createDTO) {
         Long userId = GetUserInfo.getUserId();

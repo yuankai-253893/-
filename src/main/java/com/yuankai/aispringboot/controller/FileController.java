@@ -1,6 +1,7 @@
 package com.yuankai.aispringboot.controller;
 
 import com.yuankai.aispringboot.DTO.FileUploadDTO;
+import com.yuankai.aispringboot.annotation.OperationLog;
 import com.yuankai.aispringboot.common.Result;
 import com.yuankai.aispringboot.service.SysFileInfoService;
 import com.yuankai.aispringboot.util.GetUserInfo;
@@ -18,6 +19,7 @@ public class FileController {
     @Autowired
     private SysFileInfoService sysFileInfoService;
 
+    @OperationLog("文件上传")
     @PostMapping
     public Result<String> uploadFile(@Valid FileUploadDTO fileUploadDTO) {
         Long userId = GetUserInfo.getUserId();

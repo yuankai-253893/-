@@ -89,6 +89,8 @@ src/main/java/com/yuankai/aispringboot
 ├── common/         # Result / ResultCode 统一返回
 ├── exception/      # BusinessException + 全局异常处理
 ├── enumclass/      # UserType / UserStatus 枚举
+├── annotation/     # 自定义注解（@OperationLog 操作日志）
+├── aspect/         # AOP 切面（OperationLogAspect 操作日志切面）
 └── util/           # JWT 工具、GetUserInfo
 ```
 
@@ -146,10 +148,11 @@ src/main/java/com/yuankai/aispringboot
 - **故障容错（fail-open）**：登录限流查询/记录/清除与 JWT 黑名单查询/写入全部包 try-catch——Redis 不可用时限流视为 0 次失败、黑名单视为未拉黑并放行，系统降级为"无 Redis 辅助安全"运行，恢复后自动一致（代价：故障期间登出不立即生效、暴力破解暂不受限，均为可接受短窗口）
 - **Redis 缓存**：分类树 Cache Aside 缓存（TTL 1h + 主动失效），缓存失败降级回查库
 - **防注入**：排序字段白名单映射，用户输入不直接拼 SQL
-- **并发安全**：文章阅读量走 Redis INCR 原子自增（内存扛高并发）+ 定时任务刷回 MySQL（GETDEL 原子取增量防丢失），Redis 故障自动降级 SQL 原子自增
+- **并发安全**：文章阅读量走 Redis INCR 原子自增 + 定时任务刷回 MySQL（GETDEL 原子取增量防丢失），Redis 故障自动降级 SQL 原子自增
 - **文件上传安全**：扩展名白名单（拒绝 .exe/.jsp/.html）+ 文件头魔数校验（防伪装）+ 服务端重命名防路径穿越 + 大小限制
 - **统一异常处理**：`BusinessException` + 全局处理器，参数校验/业务异常/系统异常分级返回
-- **聚合统计**：今日活跃用 Redis HyperLogLog（PFADD 埋点 + PFCOUNT 去重计数，单 key 固定约 12KB、误差约 0.81%，登录/会话/日记三处埋点，按天 key + 3 天 TTL），Redis 故障自动回退 SQL（UNION 去重口径）
+- **聚合统计**：今日活跃用 Redis HyperLogLog（PFADD 埋点 + PFCOUNT 去重计数，登录/会话/日记三处埋点，按天 key + 3 天 TTL），Redis 故障自动回退 SQL（UNION 去重口径）
+- **操作日志（AOP 切面）**：自定义 `@OperationLog` 注解 + `@Around` 切面统一记录"谁、何时、调了什么接口、请求参数、耗时、成功/失败"；密码等敏感字段自动脱敏、MultipartFile 等不可序列化参数过滤、超长截断；日志落库失败仅告警不阻断业务（fail-safe）
 - **复用与工程化**：登录限流与阅读量共用 INCR/GETDEL/KEYS，今日活跃共用 PFADD/PFCOUNT，均收口于 `RedisCounterUtil` 公共工具类；活跃埋点单独抽 `ActiveUserRecordService`，登录/会话/日记三模块一行调用
 - **容器化部署**：Dockerfile + docker-compose 一键编排 MySQL / Redis / 应用，环境一致开箱即用
 

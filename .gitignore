@@ -45,3 +45,6 @@ _shots/
 接口实现清单.md
 后端技术文档.md
 前端技术文档.md
+
+# IDE 插件缓存
+.workbuddy/

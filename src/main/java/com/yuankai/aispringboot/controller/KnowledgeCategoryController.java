@@ -9,6 +9,7 @@ import com.yuankai.aispringboot.DTO.query.ArticlePageQueryDTO;
 import com.yuankai.aispringboot.DTO.response.ArticleResponseDTO;
 import com.yuankai.aispringboot.DTO.response.ArticleSimpleResponseDTO;
 import com.yuankai.aispringboot.DTO.response.CategoryResponseDTO;
+import com.yuankai.aispringboot.annotation.OperationLog;
 import com.yuankai.aispringboot.common.Result;
 import com.yuankai.aispringboot.common.ResultCode;
 import com.yuankai.aispringboot.enumclass.UserType;
@@ -64,6 +65,7 @@ public class KnowledgeCategoryController {
     }
 
     // 创建知识文章
+    @OperationLog("新增知识文章")
     @PostMapping("/article")
     public Result<ArticleResponseDTO> createArticle(@Valid @RequestBody ArticleCreateDTO createDTO) {
         // 仅管理员能够访问操作
@@ -88,6 +90,7 @@ public class KnowledgeCategoryController {
     }
 
     // 更新知识文章
+    @OperationLog("更新知识文章")
     @PutMapping("/admin/article/{id}")
     public Result<ArticleResponseDTO> updateArticle(@PathVariable String id, @Valid @RequestBody ArticleUpdateDTO updateDTO) {
         Integer roleType = GetUserInfo.getUserType();
@@ -100,6 +103,7 @@ public class KnowledgeCategoryController {
     }
 
     // 更新知识文章状态
+    @OperationLog("更新文章状态")
     @PutMapping("/admin/article/{id}/status")
     public Result<?> updateArticleStatus(@PathVariable String id, @Valid @RequestBody ArticleStatusUpdateDTO updateDTO) {
         Integer roleType = GetUserInfo.getUserType();
@@ -113,6 +117,7 @@ public class KnowledgeCategoryController {
     }
 
     // 删除知识文章
+    @OperationLog("删除知识文章")
     @DeleteMapping("/admin/article/{id}/delete")
     public Result<?> deleteArticle(@PathVariable String id) {
         Integer roleType = GetUserInfo.getUserType();

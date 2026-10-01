@@ -335,4 +335,24 @@ CREATE TABLE `user_favorite`  (
 -- ----------------------------
 INSERT INTO `user_favorite` VALUES (8, 2, '550e8400-e29b-41d4-a716-446655440007', '2025-11-10 19:06:27');
 
+-- ----------------------------
+-- Table structure for operation_log（AOP 操作日志切面自动写入）
+-- ----------------------------
+DROP TABLE IF EXISTS `operation_log`;
+CREATE TABLE `operation_log`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint NULL DEFAULT NULL COMMENT '操作用户ID（公开接口如登录/注册为NULL）',
+  `username` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '操作用户名（匿名接口从请求参数提取）',
+  `operation` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作描述，如"新增知识文章"',
+  `method` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'HTTP方法：POST/PUT/DELETE',
+  `request_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '请求地址（含查询参数）',
+  `params` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '请求参数（已脱敏、超长截断）',
+  `cost_time` bigint NOT NULL DEFAULT 0 COMMENT '耗时（毫秒）',
+  `status` tinyint NOT NULL DEFAULT 1 COMMENT '执行结果：1-成功，0-失败',
+  `error_msg` varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '异常信息（失败时记录）',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_user_id`(`user_id` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '操作日志表（AOP切面写入）' ROW_FORMAT = DYNAMIC;
+
 SET FOREIGN_KEY_CHECKS = 1;
