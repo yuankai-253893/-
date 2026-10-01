@@ -1,5 +1,6 @@
 package com.yuankai.aispringboot.service;
 
+import com.yuankai.aispringboot.consts.RedisKeyConsts;
 import com.yuankai.aispringboot.mapper.EmotionDiaryMapper;
 import com.yuankai.aispringboot.util.RedisCounterUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +25,6 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class ActiveUserRecordService {
 
-    private static final String ACTIVE_KEY_PREFIX = "active:user:";
     private static final long ACTIVE_KEY_TTL_DAYS = 3;
 
     @Autowired
@@ -35,7 +35,7 @@ public class ActiveUserRecordService {
 
     /** 今天的活跃 key，如 active:user:2026-09-30 */
     private String todayKey() {
-        return ACTIVE_KEY_PREFIX + LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        return RedisKeyConsts.ACTIVE_KEY_PREFIX + LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
     }
 
     /**

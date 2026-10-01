@@ -11,6 +11,7 @@ import com.yuankai.aispringboot.DTO.query.ArticlePageQueryDTO;
 import com.yuankai.aispringboot.DTO.response.ArticleResponseDTO;
 import com.yuankai.aispringboot.DTO.response.ArticleSimpleResponseDTO;
 import com.yuankai.aispringboot.DTO.response.CategoryResponseDTO;
+import com.yuankai.aispringboot.consts.RedisKeyConsts;
 import com.yuankai.aispringboot.entity.KnowledgeArticle;
 import com.yuankai.aispringboot.enumclass.UserType;
 import com.yuankai.aispringboot.entity.KnowledgeCategory;
@@ -39,11 +40,9 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class KnowledgeCategoryService {
     // 分类树缓存：静态数据读多写少，全量缓存命中率最高
-    private static final String CATEGORY_TREE_KEY = "knowledge:category:tree";  // 分类树缓存键
     private static final long CATEGORY_TREE_TTL_HOURS = 1;                      // 缓存有效期 1 小时
 
     // 文章阅读量：Redis 存增量（INCR 原子自增），MySQL 存基线值，定时任务把增量刷回库
-    private static final String ARTICLE_READ_KEY_PREFIX = "article:read:";      // 阅读量增量缓存键前缀
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -67,7 +66,7 @@ public class KnowledgeCategoryService {
     public List<CategoryResponseDTO> getCategoryTree() {
         // 1. 缓存优先：命中直接返回，避免每次全表查询（Cache Aside 读路径）
         try {
-            String cached = redisTemplate.opsForValue().get(CATEGORY_TREE_KEY);
+            String cached = redisTemplate.opsForValue().get(RedisKeyConsts.CATEGORY_TREE_KEY);
             if (StrUtil.isNotBlank(cached)) {
                 log.info("分类树缓存命中");
                 return objectMapper.readValue(cached, new TypeReference<List<CategoryResponseDTO>>() {});
@@ -82,7 +81,7 @@ public class KnowledgeCategoryService {
 
         // 3. 回填缓存（TTL 兜底）
         try {
-            redisTemplate.opsForValue().set(CATEGORY_TREE_KEY, objectMapper.writeValueAsString(tree),
+            redisTemplate.opsForValue().set(RedisKeyConsts.CATEGORY_TREE_KEY, objectMapper.writeValueAsString(tree),
                     CATEGORY_TREE_TTL_HOURS, TimeUnit.HOURS);
         } catch (Exception e) {
             log.warn("分类树缓存写入失败", e);
@@ -127,7 +126,7 @@ public class KnowledgeCategoryService {
 
 //    // 主动失效：分类发生增删改后调用，删除缓存让下次查询重建（Cache Aside 写路径）
 //    public void clearCategoryTreeCache() {
-//        redisTemplate.delete(CATEGORY_TREE_KEY);
+//        redisTemplate.delete(RedisKeyConsts.CATEGORY_TREE_KEY);
 //        log.info("分类树缓存已清除");
 //    }
 
@@ -223,7 +222,7 @@ public class KnowledgeCategoryService {
 
         // 阅读量+1：优先 Redis INCR 原子自增（内存操作，扛高并发）；Redis 不可用时降级为 SQL 原子自增
         try {
-            redisCounterUtil.increment(ARTICLE_READ_KEY_PREFIX + id);
+            redisCounterUtil.increment(RedisKeyConsts.ARTICLE_READ_KEY_PREFIX + id);
         } catch (Exception e) {
             log.warn("Redis 阅读量自增失败，降级为 SQL 原子自增", e);
             LambdaUpdateWrapper<KnowledgeArticle> updateWrapper = new LambdaUpdateWrapper<>();
@@ -241,7 +240,7 @@ public class KnowledgeCategoryService {
     private Integer getDisplayReadCount(KnowledgeArticle article) {
         int base = article.getReadCount() == null ? 0 : article.getReadCount();
         try {
-            String incr = redisCounterUtil.get(ARTICLE_READ_KEY_PREFIX + article.getId());
+            String incr = redisCounterUtil.get(RedisKeyConsts.ARTICLE_READ_KEY_PREFIX + article.getId());
             if (StrUtil.isNotBlank(incr)) {
                 return base + Integer.parseInt(incr);
             }
@@ -253,7 +252,7 @@ public class KnowledgeCategoryService {
 
     // 定时任务调用：把 Redis 中的阅读量增量刷回 MySQL（GETDEL 原子取增量并清零，刷完即删）
     public void syncArticleReadCounts() {
-        Set<String> keys = redisCounterUtil.keys(ARTICLE_READ_KEY_PREFIX + "*");
+        Set<String> keys = redisCounterUtil.keys(RedisKeyConsts.ARTICLE_READ_KEY_PREFIX + "*");
         if (keys == null || keys.isEmpty()) {
             return;
         }
@@ -268,7 +267,7 @@ public class KnowledgeCategoryService {
                 if (incr <= 0) {
                     continue;
                 }
-                String articleId = key.substring(ARTICLE_READ_KEY_PREFIX.length());
+                String articleId = key.substring(RedisKeyConsts.ARTICLE_READ_KEY_PREFIX.length());
                 LambdaUpdateWrapper<KnowledgeArticle> updateWrapper = new LambdaUpdateWrapper<>();
                 updateWrapper.eq(KnowledgeArticle::getId, articleId)
                         .setSql("read_count = COALESCE(read_count, 0) + " + incr);

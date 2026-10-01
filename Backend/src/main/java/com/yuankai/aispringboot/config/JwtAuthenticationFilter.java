@@ -1,11 +1,12 @@
-package com.yuankai.aispringboot.util;
+package com.yuankai.aispringboot.config;
 
 import com.yuankai.aispringboot.common.ResultCode;
-import com.yuankai.aispringboot.config.SecurityConfig;
 import com.yuankai.aispringboot.entity.User;
 import com.yuankai.aispringboot.enumclass.UserType;
 import com.yuankai.aispringboot.mapper.UserMapper;
 import com.yuankai.aispringboot.service.RedisTokenBlacklist;
+import com.yuankai.aispringboot.util.JwtTokenUtil;
+import com.yuankai.aispringboot.util.ResponseUtil;
 import jakarta.annotation.Resource;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -24,7 +25,7 @@ import java.util.Collections;
 import java.util.List;
 
 
-public class JwtAuthticationFilter extends OncePerRequestFilter {
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * 过滤器验签成功后，把解析结果缓存到该请求属性上。
@@ -32,7 +33,7 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
      */
     public static final String JWT_USER_ATTR = "jwtUser";
 
-    private static final Logger log = LoggerFactory.getLogger(JwtAuthticationFilter.class);
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     @Resource
     private RedisTokenBlacklist redisTokenBlacklist;

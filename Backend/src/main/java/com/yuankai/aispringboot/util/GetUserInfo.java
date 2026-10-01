@@ -1,6 +1,7 @@
 package com.yuankai.aispringboot.util;
 
 import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.yuankai.aispringboot.config.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -13,8 +14,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * 而一个 Controller 方法常常同时调用 getUserId() + getUserType()，
  * 等于一次请求验签 2-3 次，属于纯粹的重复计算。
  *
- * 现在改为：JwtAuthticationFilter 验签通过后，把结果缓存到请求属性
- * {@link JwtAuthticationFilter#JWT_USER_ATTR}，这里直接读取 —— 一次请求只验一次签。
+ * JwtAuthenticationFilter 验签通过后，把结果缓存到请求属性
+ * {@link JwtAuthenticationFilter#JWT_USER_ATTR}，直接读取 —— 一次请求只验一次签。
  * 请求属性随请求销毁，不存在 ThreadLocal 泄漏问题（Tomcat 线程复用串号风险）。
  *
  * 兜底：非 Web 环境（如单元测试）拿不到请求上下文时，才真正走一次验签，行为保持不变。
@@ -46,7 +47,7 @@ public class GetUserInfo {
                 (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes != null) {
             HttpServletRequest request = attributes.getRequest();
-            Object cached = request.getAttribute(JwtAuthticationFilter.JWT_USER_ATTR);
+            Object cached = request.getAttribute(JwtAuthenticationFilter.JWT_USER_ATTR);
             if (cached instanceof JwtTokenUtil.TokenVerificationResult result) {
                 return result;
             }

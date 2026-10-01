@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.yuankai.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.yuankai.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.yuankai.aispringboot.common.ResultCode;
+import com.yuankai.aispringboot.consts.RedisKeyConsts;
 import com.yuankai.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.yuankai.aispringboot.entity.User;
 import com.yuankai.aispringboot.enumclass.UserType;
@@ -28,7 +29,6 @@ public class UserService {
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     // 登录防暴力破解：同一账号失败达到阈值后锁定
-    private static final String LOGIN_FAIL_PREFIX = "login:fail:";
     private static final int MAX_LOGIN_FAIL_TIMES = 5;               // 最大失败次数阈值
     private static final long LOCK_MINUTES = 15;                     // 锁定时长：15分钟
 
@@ -49,7 +49,7 @@ public class UserService {
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO) {
         // 1. 防暴力破解：先检查该账号失败次数是否已达阈值（Redis 计数）
         //    fail-open：Redis 不可用时查询抛异常 → 视为 0 次失败，跳过限流检查，保证登录不因 Redis 故障而中断
-        String loginFailKey = LOGIN_FAIL_PREFIX + commandDTO.getUsername();     // 键 login:fail:用户名
+        String loginFailKey = RedisKeyConsts.LOGIN_FAIL_PREFIX + commandDTO.getUsername();     // 键 login:fail:用户名
         String failCountStr = null;
         try {
             failCountStr = redisCounterUtil.get(loginFailKey);                 // 获取失败次数
@@ -113,7 +113,7 @@ public class UserService {
     private void recordLoginFail(String loginFailKey) {
         try {
             Long count = redisCounterUtil.incrementWithExpire(loginFailKey, LOCK_MINUTES, TimeUnit.MINUTES);
-            log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(LOGIN_FAIL_PREFIX, ""), count);
+            log.warn("账号 {} 登录失败第 {} 次", loginFailKey.replace(RedisKeyConsts.LOGIN_FAIL_PREFIX, ""), count);
         } catch (Exception e) {
             log.warn("记录登录失败次数失败（Redis 不可用？），fail-open 继续返回密码错误", e);
         }

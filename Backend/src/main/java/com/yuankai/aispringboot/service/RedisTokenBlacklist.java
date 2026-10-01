@@ -1,5 +1,6 @@
 package com.yuankai.aispringboot.service;
 
+import com.yuankai.aispringboot.consts.RedisKeyConsts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,8 +15,6 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class RedisTokenBlacklist {
     private static final Logger log = LoggerFactory.getLogger(RedisTokenBlacklist.class);
-
-    private static final String BLACKLIST_PREFIX = "token:blacklist:";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -34,7 +33,7 @@ public class RedisTokenBlacklist {
         if (expireMillis <= 0) {
             return;
         }
-        String key = BLACKLIST_PREFIX + token;
+        String key = RedisKeyConsts.BLACKLIST_PREFIX + token;
         try {
             redisTemplate.opsForValue().set(key, "1", expireMillis, TimeUnit.MILLISECONDS);
             log.info("Token 已加入黑名单，有效期 {} 毫秒", expireMillis);
@@ -50,7 +49,7 @@ public class RedisTokenBlacklist {
      * @return true 表示 Token 已被拉黑
      */
     public boolean isBlacklisted(String token) {
-        String key = BLACKLIST_PREFIX + token;
+        String key = RedisKeyConsts.BLACKLIST_PREFIX + token;
         try {
             return Boolean.TRUE.equals(redisTemplate.hasKey(key));
         } catch (Exception e) {

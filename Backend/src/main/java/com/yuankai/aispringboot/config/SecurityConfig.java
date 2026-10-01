@@ -3,7 +3,6 @@ package com.yuankai.aispringboot.config;
 
 import cn.hutool.core.text.AntPathMatcher;
 import com.yuankai.aispringboot.common.ResultCode;
-import com.yuankai.aispringboot.util.JwtAuthticationFilter;
 import com.yuankai.aispringboot.util.ResponseUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,8 +37,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public JwtAuthticationFilter jwtAuthticationFilter() {
-        return new JwtAuthticationFilter();
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter();
     }
 
     @Bean
@@ -72,7 +71,7 @@ public class SecurityConfig {
                                 ResponseUtil.writeError(response, ResultCode.ACCESS_UNAUTHORIZED))
                 )
                 // 添加JWT认证过滤器（过滤器方法，过滤器类型）
-                .addFilterBefore(jwtAuthticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }
