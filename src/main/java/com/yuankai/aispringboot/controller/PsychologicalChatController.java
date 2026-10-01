@@ -30,6 +30,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/psychological-chat")
 public class PsychologicalChatController {
+
+    // SSE 分片合并参数：攒够 8 片、或距上次发送超过 30ms 就立即发出一批
+    private static final int BUFFER_MAX_SIZE = 8;
+    private static final Duration BUFFER_FLUSH_INTERVAL = Duration.ofMillis(30);
+
     @Autowired
     private PsychologicalSupportService psychologicalSupportService;
 
@@ -76,18 +81,19 @@ public class PsychologicalChatController {
 
         // 开始流式对话
         return psychologicalSupportService.streamPsychologicalChat(streamDTO.getSessionId(), streamDTO.getUserMessage())
-                .map(Fragment -> {
-                    return ServerSentEvent.<String>builder()
-                            .event("message")
-                            .data(JSONUtil.toJsonStr(Result.success(Map.of("content", Fragment, "type", "normal"))))
-                            .build();
-                })
+                // 分片合并：模型吐 token 很快时，把短时间窗内的碎片攒成一批再发一次 SSE，
+                // 既减少帧数和浏览器渲染压力，又不像 delayElements 那样给每个元素累加延迟
+                .bufferTimeout(BUFFER_MAX_SIZE, BUFFER_FLUSH_INTERVAL)
+                .filter(fragments -> !fragments.isEmpty())
+                .map(fragments -> ServerSentEvent.<String>builder()
+                        .event("message")
+                        .data(JSONUtil.toJsonStr(Result.success(Map.of("content", String.join("", fragments), "type", "normal"))))
+                        .build())
                 .concatWith(Flux.just(ServerSentEvent.<String>builder()
                         .event("done")
                         .data("{}")
                         .build()
-                ))
-                .delayElements(Duration.ofMillis(50));      // 增加延迟，防止数据包过于密集
+                ));
     }
 
     // 分页查询会话

@@ -43,6 +43,6 @@ jwt:
 #  token-prefix: "Bearer "  # token前缀
 
 file:
-  # 注意：Windows 系统路径用正斜杠 / 或者双反斜杠 \\ 都可以
+  # Windows 系统路径用正斜杠 / 或者双反斜杠 \\ 都可以
   upload-path: ${FILE_UPLOAD_PATH}
 

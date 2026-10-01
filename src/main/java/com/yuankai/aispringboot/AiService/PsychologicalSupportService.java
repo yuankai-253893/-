@@ -105,14 +105,14 @@ public class PsychologicalSupportService {
             chatClient.prompt(prompt)
                     .user(userMessage)
                     .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
-                    .stream()
-                    .content()
+                    .stream()                           // 流式请求
+                    .content()                          // 把流里的内容提取成 `Flux<String>`（纯文本片段）
                     .doOnNext(Fragment -> {
-                        aiResponse.append(Fragment);
-                        sink.next(Fragment);
+                        aiResponse.append(Fragment);    // 把ai的回复攒起来
+                        sink.next(Fragment);            // 立刻转发给前端
                     })
                     .doOnComplete(() -> {
-                        String completeRes = aiResponse.toString();
+                        String completeRes = aiResponse.toString();     // 拿到完整回答
                         // 保存AI的响应消息到数据库
                         consultationMessageService.saveAiMessage(dbSessionId, completeRes, "openai");
                         // 添加AI响应消息到会话记忆

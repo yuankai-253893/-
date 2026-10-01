@@ -24,6 +24,13 @@ import java.util.List;
 
 
 public class JwtAuthticationFilter extends OncePerRequestFilter {
+
+    /**
+     * 过滤器验签成功后，把解析结果缓存到该请求属性上。
+     * 后续 Controller 通过 GetUserInfo 取值，不再重复验签（一次请求只验一次）。
+     */
+    public static final String JWT_USER_ATTR = "jwtUser";
+
     private static final Logger log = LoggerFactory.getLogger(JwtAuthticationFilter.class);
 
     @Resource
@@ -97,6 +104,9 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
 
                 // 将Token存储到请求属性中
                 request.setAttribute("jwtToken", token);
+
+                // 把已验签的用户信息一并缓存到请求属性，供 GetUserInfo 直接读取
+                request.setAttribute(JWT_USER_ATTR, validationResult);
             }else {
                 clearSecurityContext();
                 ResponseUtil.writeError(response, ResultCode.TOKEN_INVALID);
